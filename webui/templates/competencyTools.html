@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>PYGRESS - Competency Score Analyzer</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter&display=swap" rel="stylesheet" />
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            font-family: 'Inter', Arial, sans-serif;
+            margin: 0;
+            padding: 40px 20px;
+            background: linear-gradient(to right, #eff6ff, #f9fafb);
+        }
+        .container {
+            max-width: 1200px;
+            margin: auto;
+            background-color: #ffffff;
+            padding: 40px;
+            border-radius: 16px;
+            box-shadow: 0 15px 40px rgba(0, 0, 0, 0.08);
+            transition: transform 0.3s ease;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .logo {
+            display: block;
+            margin: 0 auto 24px auto;
+            max-width: 120px;
+            height: auto;
+        }
+        .container:hover { transform: translateY(-2px); }
+        h1 {
+            text-align: center;
+            font-size: 32px;
+            color: #000000;
+            margin: 0;
+            margin-bottom: 20px;
+            font-weight: 800;
+            letter-spacing: 2px;
+        }
+        h2 {
+            text-align: center;
+            font-size: 18px;
+            font-weight: 400;
+            color: #475569;
+            margin-top: 0;
+            margin-bottom: 30px;
+        }
+        label {
+            font-weight: 600;
+            color: #374151;
+            display: block;
+            margin-top: 24px;
+            margin-bottom: 8px;
+            width: 100%;
+            text-align: left;
+        }
+        .input-group {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 20px;
+            width: 100%;
+        }
+        input[type="text"] {
+            width: 100%;
+            padding: 14px 16px;
+            border: 1px solid #cbd5e1;
+            border-radius: 10px;
+            background-color: #f1f5f9;
+            transition: border-color 0.2s;
+            font-size: 1.1rem;
+        }
+        input[type="text"]:focus {
+            border-color: #60a5fa;
+            outline: none;
+        }
+        button {
+            background-color: #2563eb;
+            color: white;
+            padding: 14px 28px;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 600;
+            transition: background-color 0.3s ease;
+            white-space: nowrap;
+        }
+        button:hover {
+            background-color: #1d4ed8;
+        }
+        .error, .success, .loading {
+            width: 100%;
+            text-align: center;
+            margin: 1em 0 0.5em 0;
+        }
+        .error { color: #e11d48; }
+        .success { color: #059669; }
+        .loading { color: #2563eb; display: none; }
+        #visualization-container {
+            width: 100%;
+            margin-top: 30px;
+            display: none;
+        }
+        #visualization-frame {
+            width: 100%;
+            height: 800px;
+            border: none;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <img src="/static/logopygress.jpg" alt="PYGRESS Logo" class="logo">
+        <h1>PYGRESS</h1>
+        <h2>Analyzing coding competency of Python contributors in open-source projects</h2>
+        <label for="github_url">Enter your GitHub repository URL:</label>
+        <div class="input-group">
+            <input type="text" id="github_url" placeholder="https://github.com/username/project" required>
+            <button id="generate_btn" onclick="generateReport()">Generate</button>
+        </div>
+        <div id="loading" class="loading">Processing... Please wait...</div>
+        <div id="error" class="error" style="display: none;"></div>
+        <div id="success" class="success" style="display: none;"></div>
+        <div id="visualization-container">
+            <iframe id="visualization-frame" src=""></iframe>
+        </div>
+    </div>
+    <script>
+    function generateReport() {
+        const githubUrl = document.getElementById('github_url').value.trim();
+        if (!githubUrl) {
+            showError('Please enter a GitHub URL');
+            return;
+        }
+        document.getElementById('loading').style.display = 'block';
+        document.getElementById('error').style.display = 'none';
+        document.getElementById('success').style.display = 'none';
+        document.getElementById('visualization-container').style.display = 'none';
+        document.getElementById('generate_btn').disabled = true;
+        
+        fetch('/generate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ github_url: githubUrl })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) {
+                showError(data.error);
+            } else {
+                showSuccess('Analysis completed successfully!');
+                if (data.visualization) {
+                    const visualizationContainer = document.getElementById('visualization-container');
+                    const visualizationFrame = document.getElementById('visualization-frame');
+                    visualizationFrame.src = `/visualization/${data.visualization}`;
+                    visualizationContainer.style.display = 'block';
+                }
+            }
+        })
+        .catch(error => {
+            showError('An error occurred: ' + error.message);
+        })
+        .finally(() => {
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('generate_btn').disabled = false;
+        });
+    }
+    function showError(message) {
+        const errorDiv = document.getElementById('error');
+        errorDiv.textContent = message;
+        errorDiv.style.display = 'block';
+        document.getElementById('success').style.display = 'none';
+    }
+    function showSuccess(message) {
+        const successDiv = document.getElementById('success');
+        successDiv.textContent = message;
+        successDiv.style.display = 'block';
+        document.getElementById('error').style.display = 'none';
+    }
+    </script>
+</body>
+</html>

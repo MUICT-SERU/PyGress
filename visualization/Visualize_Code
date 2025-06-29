@@ -1,0 +1,161 @@
+import os
+import json
+import pandas as pd
+import plotly.graph_objects as go
+import plotly.express as px
+
+# --- CONFIG ---
+INPUT_PATH = r"C:\Users\Oily_brd\Desktop\Greeedhub_PyGress\backend\Classified_Project_CompetencyScore"
+OUTPUT_PATH = r"C:\Users\Oily_brd\Desktop\Greeedhub_PyGress\visualization"
+COMPETENCY_ORDER = ["A1", "A2", "B1", "B2", "C1", "C2"]
+
+# --- STEP 1: Clean JSON files ---
+def clean_difference_values(directory):
+    for folder in os.listdir(directory):
+        folder_path = os.path.join(directory, folder)
+        if os.path.isdir(folder_path):
+            for file in os.listdir(folder_path):
+                if file.endswith(".json"):
+                    file_path = os.path.join(folder_path, file)
+                    with open(file_path, 'r') as f:
+                        data = json.load(f)
+                    for level, value in data.get("Levels", {}).get("Difference", {}).items():
+                        if value < 0:
+                            data["Levels"]["Difference"][level] = 0
+                    with open(file_path, 'w') as f:
+                        json.dump(data, f, indent=4)
+
+# --- STEP 2: Generate Visualizations ---
+def generate_html_for_folder(folder_path, project_name):
+    json_files = [f for f in os.listdir(folder_path) if f.endswith('.json')]
+    dfs = []
+
+    for file in json_files:
+        file_path = os.path.join(folder_path, file)
+        with open(file_path, 'r') as f:
+            data = json.load(f)
+        diff_data = data.get("Levels", {}).get("Difference", {})
+        df = pd.DataFrame([{
+            "Year": int(data["AuthorDateFormat"][:4]),
+            "Month": int(data["AuthorDateFormat"][4:6]),
+            "Day": int(data["AuthorDateFormat"][6:8]),
+            "Level": level,
+            "Value": diff_data.get(level, 0),
+            "AuthorID": data["AuthorID"]
+        } for level in COMPETENCY_ORDER])
+        dfs.append(df)
+
+    if not dfs:
+        return None
+
+    df_all = pd.concat(dfs, ignore_index=True)
+    df_all.sort_values(by=['Year', 'Month', 'Day', 'AuthorID'], inplace=True)
+    df_all = df_all.groupby(['Year', 'Month', 'Day', 'Level', 'AuthorID']).agg({'Value': 'sum'}).reset_index()
+    df_all['LevelOrder'] = df_all['Level'].map({level: i for i, level in enumerate(COMPETENCY_ORDER)})
+    df_all['Total'] = df_all.groupby(['Year', 'Month', 'Day', 'AuthorID'])['Value'].transform('sum')
+    author_totals = df_all.groupby('AuthorID')['Value'].sum().reset_index()
+
+    html = f"<html><head><title>{project_name}</title></head><body><h1 style='text-align: center;'>{project_name}</h1>"
+
+    fig_spider = go.Figure()
+    for author_id, author_data in df_all.groupby('AuthorID'):
+        values = (author_data.groupby('Level')['Value'].sum() / author_totals.loc[author_totals['AuthorID'] == author_id, 'Value'].values[0] * 100).tolist()
+        fig_spider.add_trace(go.Scatterpolar(r=values, theta=COMPETENCY_ORDER, fill='toself', name=author_id))
+
+    fig_spider.update_layout(title="Overall Commits", polar=dict(radialaxis=dict(visible=True, range=[0, 100])))
+    html += fig_spider.to_html(full_html=False, include_plotlyjs='cdn')
+
+    fig_slider = px.scatter(df_all, x='Month', y='LevelOrder', size='Value', color='Level',
+                            animation_frame='Year', range_x=[0.5, 12.5],
+                            range_y=[-0.5, len(COMPETENCY_ORDER)-0.5],
+                            labels={'LevelOrder': 'Competency Level', 'Value': 'Value'},
+                            hover_data={'AuthorID': True})
+    fig_slider.update_layout(
+        title="Overall Commits",
+        height=420,
+        margin=dict(l=30, r=40, t=40, b=40),
+        legend=dict(orientation="h", yanchor="bottom", y=-0.3, xanchor="center", x=0.5),
+        xaxis=dict(tickmode='array', tickvals=list(range(1, 13)),
+                   ticktext=['January', 'February', 'March', 'April', 'May', 'June',
+                             'July', 'August', 'September', 'October', 'November', 'December']),
+        yaxis=dict(tickmode='array', tickvals=list(range(len(COMPETENCY_ORDER))),
+                   ticktext=COMPETENCY_ORDER)
+    )
+    fig_slider.update_traces(marker=dict(sizemode='area', sizeref=2.5 * max(df_all['Value']) / (50 ** 2)))
+    html += fig_slider.to_html(full_html=False, include_plotlyjs='cdn')
+
+    for author_id in author_totals['AuthorID']:
+        author_data = df_all[df_all['AuthorID'] == author_id]
+
+        fig_author = go.Figure()
+        r_values = (author_data.groupby('Level')['Value'].sum() / author_totals[author_totals['AuthorID'] == author_id]['Value'].values[0] * 100).tolist()
+        fig_author.add_trace(go.Scatterpolar(r=r_values, theta=COMPETENCY_ORDER, fill='toself', name=author_id))
+        fig_author.update_layout(title=f"Developer Competency - AuthorID: {author_id}", polar=dict(radialaxis=dict(visible=True, range=[0, 100])))
+
+        fig_author.add_shape(type="rect", xref="paper", yref="paper", x0=0, y0=0, x1=0.15, y1=1,
+                             fillcolor="rgb(253, 245, 230)", opacity=1, layer="below", line=dict(width=0))
+
+        title_x_pos = (0 + 0.15) / 2
+        fig_author.add_annotation(x=title_x_pos, y=1.02, xref='paper', yref='paper', text="Competency Levels",
+                                  font=dict(size=14), showarrow=False, xanchor='center')
+
+        for level in COMPETENCY_ORDER[::-1]:
+            value = author_data.loc[author_data['Level'] == level, 'Value'].sum()
+            y_pos = (len(COMPETENCY_ORDER) - 1 - COMPETENCY_ORDER.index(level)) / len(COMPETENCY_ORDER)
+            fig_author.add_annotation(x=0.01, y=y_pos, text=f"{level}: {value}", showarrow=False,
+                                      font=dict(size=12), xanchor="left")
+
+        html += fig_author.to_html(full_html=False, include_plotlyjs='cdn')
+
+        unique_years = author_data['Year'].nunique()
+        title = f"Developer Competency - AuthorID: {author_id}"
+        if unique_years == 1:
+            title += f" - Year: {author_data['Year'].iloc[0]}"
+
+        fig_slider_author = px.scatter(author_data, x='Month', y='LevelOrder', size='Value', color='Level',
+                                       animation_frame='Year', range_x=[0.5, 12.5],
+                                       range_y=[-0.5, len(COMPETENCY_ORDER)-0.5],
+                                       labels={'LevelOrder': 'Competency Level', 'Value': 'Value'},
+                                       category_orders={'Month': list(range(1, 13))})
+        fig_slider_author.update_layout(
+            title=title,
+            height=420,
+            margin=dict(l=30, r=40, t=40, b=40),
+            legend=dict(orientation="h", yanchor="bottom", y=-0.3, xanchor="center", x=0.5),
+            xaxis=dict(tickmode='array', tickvals=list(range(1, 13)),
+                       ticktext=['January', 'February', 'March', 'April', 'May', 'June',
+                                 'July', 'August', 'September', 'October', 'November', 'December']),
+            yaxis=dict(tickmode='array', tickvals=list(range(len(COMPETENCY_ORDER))),
+                       ticktext=COMPETENCY_ORDER)
+        )
+        fig_slider_author.update_traces(marker=dict(sizemode='area', sizeref=2.5 * max(author_data['Value']) / (50 ** 2)))
+        html += fig_slider_author.to_html(full_html=False, include_plotlyjs='cdn')
+
+    html += "</body></html>"
+    return html
+
+# --- STEP 3: Run Everything ---
+def main():
+    # Delete existing HTML files in the visualization directory
+    for file in os.listdir(OUTPUT_PATH):
+        if file.endswith('.html'):
+            file_path = os.path.join(OUTPUT_PATH, file)
+            try:
+                os.remove(file_path)
+                print(f"Deleted: {file}")
+            except Exception as e:
+                print(f"Error deleting {file}: {str(e)}")
+
+    clean_difference_values(INPUT_PATH)
+    os.makedirs(OUTPUT_PATH, exist_ok=True)
+
+    for folder in os.listdir(INPUT_PATH):
+        folder_path = os.path.join(INPUT_PATH, folder)
+        if os.path.isdir(folder_path):
+            html_output = generate_html_for_folder(folder_path, folder)
+            if html_output:
+                with open(os.path.join(OUTPUT_PATH, f"{folder}_Visualization.html"), 'w') as f:
+                    f.write(html_output)
+
+if __name__ == "__main__":
+    main()
