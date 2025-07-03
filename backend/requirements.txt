@@ -1,0 +1,6 @@
+pydriller
+pytz
+gitpython
+pandas
+flask
+plotly
