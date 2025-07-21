@@ -8,15 +8,11 @@ A comprehensive Python competency analysis tool that analyzes GitHub repositorie
 - **CEFR Competency Assessment**: Evaluates code complexity using A1-C2 proficiency levels
 - **Interactive Visualizations**: Generates dynamic charts and graphs using Plotly
 - **Web Interface**: User-friendly Flask-based web application
-- **Multi-Project Support**: Process multiple repositories simultaneously
 - **Author Tracking**: Track individual developer contributions and competency evolution
-- **Commit Analysis**: Analyze code changes before and after commits
 
 ## 📋 Prerequisites
 
 - Python 3.7+
-- Git
-- Internet connection for repository cloning
 
 ## 🚀 Installation
 
